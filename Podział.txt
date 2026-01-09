@@ -1,0 +1,29 @@
+project/
+└── src/
+    ├── package/
+    │   ├── Package.hpp
+    │   ├── Package.cpp
+    │   └── PackageStorage.hpp
+    │
+    ├── nodes/
+    │   ├── Node.hpp
+    │   ├── Interfaces.hpp
+    │   └── Nodes.cpp
+    │
+    ├── factory/
+    │   ├── Factory.hpp
+    │   └── Factory.cpp
+    │
+    ├── simulation/
+    │   ├── Simulation.hpp
+    │   └── Simulation.cpp
+    │
+    ├── reports/
+    │   ├── Report.hpp
+    │   └── Report.cpp
+    │
+    ├── io/
+    │   ├── Parser.hpp
+    │   └── Parser.cpp
+    │
+    └── main.cpp
