@@ -1,123 +1,218 @@
-#include "io/Parser.hpp"
+#include "Parser.hpp"
+
 #include <sstream>
-#include <algorithm>
-#include <cctype>
+#include <vector>
+#include <stdexcept>
 
-static std::string trim(std::string s) {
-    auto not_space = [](unsigned char c){ return !std::isspace(c); };
-    s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_space));
-    s.erase(std::find_if(s.rbegin(), s.rend(), not_space).base(), s.end());
-    return s;
-}
+// =======================================================
+// Funkcje pomocnicze
+// =======================================================
 
-static ElementType tag_to_type(const std::string& tag) {
-    if (tag == "LOADING_RAMP") return ElementType::LOADING_RAMP;
-    if (tag == "WORKER") return ElementType::WORKER;
-    if (tag == "STOREHOUSE") return ElementType::STOREHOUSE;
-    if (tag == "LINK") return ElementType::LINK;
-    throw ParsingError("Unknown tag: " + tag);
-}
-
-static PackageQueueType parse_qt(const std::string& s) {
-    if (s == "FIFO") return PackageQueueType::FIFO;
-    if (s == "LIFO") return PackageQueueType::LIFO;
-    throw ParsingError("Invalid queue-type: " + s);
-}
-
-static NodeType parse_nt(const std::string& s) {
-    if (s == "ramp") return NodeType::RAMP;
-    if (s == "worker") return NodeType::WORKER;
-    if (s == "storehouse" || s == "store") return NodeType::STOREHOUSE;
-    throw ParsingError("Invalid node type: " + s);
-}
-
-std::pair<NodeType,int> parse_node_ref(const std::string& s) {
-    auto pos = s.find('-');
-    if (pos == std::string::npos) throw ParsingError("Invalid node ref: " + s);
-    NodeType t = parse_nt(s.substr(0, pos));
-    int id = std::stoi(s.substr(pos + 1));
-    return {t, id};
-}
-
-ParsedLineData parse_line(const std::string& raw) {
-    std::string line = trim(raw);
-    if (line.empty()) throw ParsingError("Empty line");
-
+// Dzieli linię na tokeny oddzielone spacjami
+static std::vector<std::string> split(const std::string& line) {
+    std::vector<std::string> tokens;
     std::istringstream iss(line);
-    std::string tag;
-    iss >> tag;
-
-    ParsedLineData out;
-    out.type = tag_to_type(tag);
-
     std::string token;
+
     while (iss >> token) {
-        auto pos = token.find('=');
-        if (pos == std::string::npos) throw ParsingError("Bad token: " + token);
-        out.params[token.substr(0, pos)] = token.substr(pos + 1);
+        tokens.push_back(token);
     }
-    return out;
+    return tokens;
 }
 
-FactoryDraft load_factory_structure(std::istream& is) {
-    FactoryDraft d;
+// =======================================================
+// Parsowanie jednej linii
+// =======================================================
+
+ParsedLineData IO::parse_line(const std::string& line) {
+    auto tokens = split(line);
+    if (tokens.empty()) {
+        throw std::logic_error("Empty line");
+    }
+
+    ParsedLineData result;
+
+    // Rozpoznanie typu elementu
+    if (tokens[0] == "RAMP") {
+        result.type = ElementType::RAMP;
+    } else if (tokens[0] == "WORKER") {
+        result.type = ElementType::WORKER;
+    } else if (tokens[0] == "STOREHOUSE") {
+        result.type = ElementType::STOREHOUSE;
+    } else if (tokens[0] == "LINK") {
+        result.type = ElementType::LINK;
+    } else {
+        throw std::logic_error("Unknown element type");
+    }
+
+    // Parsowanie par klucz=wartość
+    for (size_t i = 1; i < tokens.size(); ++i) {
+        auto pos = tokens[i].find('=');
+        if (pos == std::string::npos) {
+            throw std::logic_error("Invalid parameter format");
+        }
+
+        std::string key = tokens[i].substr(0, pos);
+        std::string value = tokens[i].substr(pos + 1);
+
+        result.parameters[key] = value;
+    }
+
+    return result;
+}
+
+// =======================================================
+// Wczytywanie struktury fabryki
+// =======================================================
+
+Factory IO::load_factory_structure(std::istream& is) {
+    Factory factory;
     std::string line;
-    int ln = 0;
 
     while (std::getline(is, line)) {
-        ln++;
-        std::string t = trim(line);
-        if (t.empty() || t[0] == ';') continue;
+        // Pomijamy puste linie i komentarze
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
 
-        ParsedLineData p;
-        try { p = parse_line(t); }
-        catch (const ParsingError& e) { throw ParsingError("Line " + std::to_string(ln) + ": " + e.what()); }
+        ParsedLineData data = parse_line(line);
 
-        try {
-            switch (p.type) {
-                case ElementType::LOADING_RAMP: {
-                    int id = std::stoi(p.params.at("id"));
-                    int di = std::stoi(p.params.at("delivery-interval"));
-                    d.ramps.push_back({id, di});
-                } break;
-                case ElementType::WORKER: {
-                    int id = std::stoi(p.params.at("id"));
-                    int pt = std::stoi(p.params.at("processing-time"));
-                    auto qt = parse_qt(p.params.at("queue-type"));
-                    d.workers.push_back({id, pt, qt});
-                } break;
-                case ElementType::STOREHOUSE: {
-                    int id = std::stoi(p.params.at("id"));
-                    d.stores.push_back({id});
-                } break;
-                case ElementType::LINK: {
-                    auto [st, sid] = parse_node_ref(p.params.at("src"));
-                    auto [dt, did] = parse_node_ref(p.params.at("dest"));
-                    d.links.push_back({st, sid, dt, did});
-                } break;
+        // ---------------------------------------------------
+        // RAMP
+        // ---------------------------------------------------
+        if (data.type == ElementType::RAMP) {
+            ElementID id = std::stoi(data.parameters.at("id"));
+            TimeOffset di = std::stoi(data.parameters.at("delivery-interval"));
+
+            factory.add_ramp(Ramp(id, di));
+        }
+
+        // ---------------------------------------------------
+        // WORKER
+        // ---------------------------------------------------
+        else if (data.type == ElementType::WORKER) {
+            ElementID id = std::stoi(data.parameters.at("id"));
+            TimeOffset pd = std::stoi(data.parameters.at("processing-time"));
+
+            std::string q = data.parameters.at("queue-type");
+            PackageQueueType qt =
+                (q == "FIFO") ? PackageQueueType::FIFO : PackageQueueType::LIFO;
+
+            factory.add_worker(
+                Worker(id, pd,
+                    std::unique_ptr<IPackageQueue>(
+                        new PackageQueue(qt)))
+            );
+        }
+
+        // ---------------------------------------------------
+        // STOREHOUSE
+        // ---------------------------------------------------
+        else if (data.type == ElementType::STOREHOUSE) {
+            ElementID id = std::stoi(data.parameters.at("id"));
+
+            factory.add_storehouse(Storehouse(id));
+        }
+
+        // ---------------------------------------------------
+        // LINK
+        // ---------------------------------------------------
+        else if (data.type == ElementType::LINK) {
+            ElementID src = std::stoi(data.parameters.at("src"));
+            ElementID dest = std::stoi(data.parameters.at("dest"));
+
+            // Szukamy nadawcy
+            PackageSender* sender = nullptr;
+
+            for (auto it = factory.ramp_cbegin(); it != factory.ramp_cend(); ++it) {
+                if (it->get_id() == src) {
+                    sender = const_cast<Ramp*>(&(*it));
+                    break;
+                }
             }
-        } catch (const std::out_of_range&) {
-            throw ParsingError("Line " + std::to_string(ln) + ": missing key");
+            for (auto it = factory.worker_cbegin(); it != factory.worker_cend() && !sender; ++it) {
+                if (it->get_id() == src) {
+                    sender = const_cast<Worker*>(&(*it));
+                    break;
+                }
+            }
+
+            if (!sender) {
+                throw std::logic_error("Sender not found");
+            }
+
+            // Szukamy odbiorcy
+            IPackageReceiver* receiver = nullptr;
+
+            for (auto it = factory.worker_cbegin(); it != factory.worker_cend(); ++it) {
+                if (it->get_id() == dest) {
+                    receiver = const_cast<Worker*>(&(*it));
+                    break;
+                }
+            }
+            for (auto it = factory.storehouse_cbegin(); it != factory.storehouse_cend() && !receiver; ++it) {
+                if (it->get_id() == dest) {
+                    receiver = const_cast<Storehouse*>(&(*it));
+                    break;
+                }
+            }
+
+            if (!receiver) {
+                throw std::logic_error("Receiver not found");
+            }
+
+            sender->receiver_preferences.add_receiver(receiver);
         }
     }
-    return d;
+
+    return factory;
 }
 
-void save_factory_structure(const FactoryDraft& d, std::ostream& os) {
-    for (auto& r : d.ramps)
-        os << "LOADING_RAMP id=" << r.id << " delivery-interval=" << r.di << "\n";
-    for (auto& w : d.workers)
-        os << "WORKER id=" << w.id << " processing-time=" << w.pt
-           << " queue-type=" << (w.qt == PackageQueueType::FIFO ? "FIFO" : "LIFO") << "\n";
-    for (auto& s : d.stores)
-        os << "STOREHOUSE id=" << s.id << "\n";
-    for (auto& l : d.links) {
-        auto nt = [](NodeType t){
-            if (t == NodeType::RAMP) return "ramp";
-            if (t == NodeType::WORKER) return "worker";
-            return "storehouse";
-        };
-        os << "LINK src=" << nt(l.src_type) << "-" << l.src_id
-           << " dest=" << nt(l.dest_type) << "-" << l.dest_id << "\n";
+// =======================================================
+// Zapis struktury fabryki
+// =======================================================
+
+void IO::save_factory_structure(const Factory& factory, std::ostream& os) {
+
+    // RAMP
+    for (auto it = factory.ramp_cbegin(); it != factory.ramp_cend(); ++it) {
+        os << "RAMP id=" << it->get_id()
+           << " delivery-interval=" << it->get_delivery_interval()
+           << "\n";
+    }
+
+    // WORKER
+    for (auto it = factory.worker_cbegin(); it != factory.worker_cend(); ++it) {
+        os << "WORKER id=" << it->get_id()
+           << " processing-time=" << it->get_processing_duration()
+           << " queue-type="
+           << (it->get_queue()->getQueueType() == PackageQueueType::FIFO ? "FIFO" : "LIFO")
+           << "\n";
+    }
+
+    // STOREHOUSE
+    for (auto it = factory.storehouse_cbegin(); it != factory.storehouse_cend(); ++it) {
+        os << "STOREHOUSE id=" << it->get_id() << "\n";
+    }
+
+    // LINK
+    for (auto it = factory.ramp_cbegin(); it != factory.ramp_cend(); ++it) {
+        for (auto pref = it->receiver_preferences.begin();
+             pref != it->receiver_preferences.end(); ++pref) {
+
+            os << "LINK src=" << it->get_id()
+               << " dest=" << pref->first->get_id()
+               << "\n";
+        }
+    }
+
+    for (auto it = factory.worker_cbegin(); it != factory.worker_cend(); ++it) {
+        for (auto pref = it->receiver_preferences.begin();
+             pref != it->receiver_preferences.end(); ++pref) {
+
+            os << "LINK src=" << it->get_id()
+               << " dest=" << pref->first->get_id()
+               << "\n";
+        }
     }
 }

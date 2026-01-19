@@ -1,0 +1,27 @@
+# ===============================
+# RAMPS
+# ===============================
+RAMP id=1 delivery-interval=1
+
+# ===============================
+# WORKERS
+# ===============================
+WORKER id=2 processing-time=2 queue-type=FIFO
+WORKER id=3 processing-time=3 queue-type=LIFO
+
+# ===============================
+# STOREHOUSES
+# ===============================
+STOREHOUSE id=4
+
+# ===============================
+# LINKS
+# ===============================
+
+# Rampa rozdziela paczki losowo do dwóch workerów
+LINK src=1 dest=2
+LINK src=1 dest=3
+
+# Obaj workerzy wysyłają do jednego magazynu
+LINK src=2 dest=4
+LINK src=3 dest=4

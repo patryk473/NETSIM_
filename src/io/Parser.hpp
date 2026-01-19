@@ -2,42 +2,51 @@
 #include <istream>
 #include <ostream>
 #include <string>
-#include <unordered_map>
-#include <vector>
-#include <stdexcept>
+#include <map>
 
-#include "package/Package.hpp"
+#include "Factory/factory.hpp"
 
-enum class ElementType { LOADING_RAMP, WORKER, STOREHOUSE, LINK };
-enum class NodeType { RAMP, WORKER, STOREHOUSE };
+
+enum class ElementType { RAMP, WORKER, STOREHOUSE, LINK };
 
 struct ParsedLineData {
     ElementType type;
-    std::unordered_map<std::string, std::string> params;
+    std::map<std::string, std::string> parameters;
 };
+namespace IO {
 
-struct LinkSpec {
-    NodeType src_type; int src_id;
-    NodeType dest_type; int dest_id;
-};
+    // Parsuje pojedynczą linię tekstu
+    ParsedLineData parse_line(const std::string& line);
 
-struct FactoryDraft {
-    struct RampSpec { int id; int di; };
-    struct WorkerSpec { int id; int pt; PackageQueueType qt; };
-    struct StoreSpec { int id; };
+    // Wczytuje strukturę fabryki
+    Factory load_factory_structure(std::istream& is);
 
-    std::vector<RampSpec> ramps;
-    std::vector<WorkerSpec> workers;
-    std::vector<StoreSpec> stores;
-    std::vector<LinkSpec> links;
-};
+    // Zapisuje strukturę fabryki
+    void save_factory_structure(const Factory& factory, std::ostream& os);
+}
 
-struct ParsingError : std::runtime_error {
-    using std::runtime_error::runtime_error;
-};
+// struct LinkSpec {
+//     NodeType src_type; int src_id;
+//     NodeType dest_type; int dest_id;
+// };
 
-ParsedLineData parse_line(const std::string& line);
-FactoryDraft load_factory_structure(std::istream& is);
-void save_factory_structure(const FactoryDraft& d, std::ostream& os);
+// struct FactoryDraft {
+//     struct RampSpec { int id; int di; };
+//     struct WorkerSpec { int id; int pt; PackageQueueType qt; };
+//     struct StoreSpec { int id; };
 
-std::pair<NodeType,int> parse_node_ref(const std::string& s);
+//     std::vector<RampSpec> ramps;
+//     std::vector<WorkerSpec> workers;
+//     std::vector<StoreSpec> stores;
+//     std::vector<LinkSpec> links;
+// };
+
+// struct ParsingError : std::runtime_error {
+//     using std::runtime_error::runtime_error;
+// };
+
+// ParsedLineData parse_line(const std::string& line);
+// FactoryDraft load_factory_structure(std::istream& is);
+// void save_factory_structure(const FactoryDraft& d, std::ostream& os);
+
+// std::pair<NodeType,int> parse_node_ref(const std::string& s);
