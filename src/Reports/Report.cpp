@@ -1,6 +1,5 @@
 #include "Report.hpp"
 
-// mały helper do powtarzalnych separatorów
 static void print_header(std::ostream& os, const std::string& title) {
     os << "=========================\n"
        << "      " << title << "\n"
@@ -16,7 +15,7 @@ static const char* queue_type_to_str(PackageQueueType qt) {
 }
 
 // =======================================================
-// Raport struktury sieci (Opcja 3)
+// Raport struktury sieci 
 // =======================================================
 
 void Reports::print_factory_structure(const Factory& factory, std::ostream& os) {
@@ -96,7 +95,7 @@ void Reports::print_factory_structure(const Factory& factory, std::ostream& os) 
 }
 
 // =======================================================
-// Raport stanu symulacji (Opcja 3)
+// Raport stanu symulacji 
 // =======================================================
 
 void Reports::print_simulation_state(const Factory& factory, Time t, std::ostream& os) {
